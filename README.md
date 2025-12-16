@@ -1,1 +1,49 @@
-# my-python-panel
+🐍 PyPanel Pro (Browser Python Runtime)
+PyPanel Pro は、ブラウザだけで完結して動作する、高性能なPython実行環境です。
+インストール不要で、WebサイトにアクセスするだけですぐにPythonコードの記述・実行・検証を行うことができます。
+
+🤖 AIによる生成について
+本プロジェクトのコード、アーキテクチャ、およびドキュメントは、生成AI（Artificial Intelligence）の支援を受けて設計・実装されました。
+「高速動作」「オフライン対応」「GitHub Pagesのみでの構築」といった要件に基づき、AIが最適な技術選定とコーディングを行っています。
+✨ 特徴
+このツールには以下の高度な機能が搭載されています。
+
+⚡ 高速実行: Pythonの処理をWeb Worker（別スレッド）で実行するため、重い計算を行ってもブラウザのUIがフリーズしません。
+📶 オフライン対応: Service Worker技術を使用。一度アクセスすれば、インターネット接続がない環境（機内やトンネルなど）でもアプリとして起動・実行が可能です。
+🎨 リッチなエディタ: Ace Editor を採用。Pythonのシンタックスハイライト（色分け）や、入力補完（オートコンプリート）が機能し、快適なコーディング体験を提供します。
+☁️ サーバーレス: GitHub Pagesなどの静的ホスティングだけで動作します。バックエンドサーバーは一切不要です。
+🔌 埋め込み対応: Iframeとして他のWebサイトに埋め込むことで、外部からデータを受け取って処理するAPIも備えています。
+🛠️ 技術スタック
+Runtime: Pyodide (WebAssembly版 Python)
+Editor: Ace Editor
+PWA: Service Worker (Cache Storage)
+Concurrency: Web Workers
+🚀 デプロイ手順
+このプロジェクトはビルド不要です。GitHub Pagesですぐに公開できます。
+
+リポジトリの作成
+GitHubで新しいリポジトリを作成し、以下の4つのファイルを配置します。
+index.html
+main.js
+py-worker.js
+sw.js
+GitHub Pagesの有効化
+リポジトリの Settings > Pages に移動し、Branch を main (または master) に設定して保存します。
+数分待つと、https://<あなたのID>.github.io/<リポジトリ名>/ というURLが発行されます。
+完了
+発行されたURLにアクセスすれば、すぐにPython環境が利用可能です。
+📖 使い方
+サイトにアクセス
+デプロイしたURLをブラウザで開きます。
+初期化待ち
+初回のみPythonエンジンのダウンロードが行われます。画面下部に Ready (Offline OK) と表示されれば準備完了です。
+コーディングと実行
+エディタにPythonコードを記述し、▶ Run ボタンをクリックして実行します。
+主な機能
+補完機能: コード入力中に Ctrl+Space または文字入力で補完候補が表示されます。
+ライブラリ: 標準ライブラリに加え、NumPyやPandasなども import するだけで自動的に読み込まれて使用可能です（ネットワーク接続時）。
+⚠️ 免責事項
+本ツールはクライアントサイド（ブラウザ内）で完結して動作するため、入力したコードが外部サーバーに送信されることはありません。
+AIによって生成されたコードベースであるため、予期せぬ挙動やバグが含まれる可能性があります。利用は自己責任でお願いします。
+Copyright (c) 2024 [Your Name]
+Generated with AI Assistance.
