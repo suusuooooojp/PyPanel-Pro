@@ -83,5 +83,5 @@
 
 ---
 
-Copyright (c) 2024 [Your Name]  
+Copyright (c) 2025 [suusuo]  
 Generated with AI Assistance.
