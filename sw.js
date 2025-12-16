@@ -1,39 +1,37 @@
-const CACHE_NAME = 'pypanel-v6'; // バージョンアップ
-const URLS = [
+const CACHE_NAME = 'pypanel-pro-v2';
+const ASSETS = [
     './',
     './index.html',
     './main.js',
     './py-worker.js',
+    './README.md',
+    // Pyodide Core
     'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js',
     'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.asm.js',
     'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.asm.wasm',
     'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/python_stdlib.zip',
-    'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
+    // Ace Editor Core
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/ace.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/ext-language_tools.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/theme-monokai.js',
+    // Languages & Snippets
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/mode-python.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/snippets/python.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/mode-javascript.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/snippets/javascript.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/mode-typescript.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/snippets/typescript.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/mode-html.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/snippets/html.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/mode-css.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/snippets/css.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.2/worker-base.js'
 ];
 
-self.addEventListener('install', e => {
-    self.skipWaiting();
-    e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(URLS)));
+self.addEventListener('install', (e) => {
+    e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
 });
 
-self.addEventListener('activate', e => {
-    e.waitUntil(caches.keys().then(keys => Promise.all(
-        keys.map(k => k !== CACHE_NAME ? caches.delete(k) : null)
-    )));
-});
-
-self.addEventListener('fetch', e => {
-    const url = new URL(e.request.url);
-    // 外部CDNも含めてキャッシュする戦略
-    if (url.hostname.includes('cdn') || url.hostname.includes('cdnjs')) {
-        e.respondWith(caches.open(CACHE_NAME).then(c => 
-            c.match(e.request).then(r => r || fetch(e.request).then(res => {
-                c.put(e.request, res.clone());
-                return res;
-            }))
-        ));
-    } else {
-        e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
-    }
+self.addEventListener('fetch', (e) => {
+    e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
 });
