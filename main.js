@@ -3,21 +3,22 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
-// --- Ace Editor Setup ---
-ace.require("ace/ext/language_tools");
-const editor = ace.edit("editor");
-editor.setTheme("ace/theme/vibrant_ink"); // よりモダンなテーマ
-editor.setOptions({
-    enableBasicAutocompletion: true,
-    enableLiveAutocompletion: true,
-    enableSnippets: true,
-    showPrintMargin: false,
-    fontSize: "14px",
-    fontFamily: "'JetBrains Mono', monospace",
-    tabSize: 4,
-    useSoftTabs: true,
-    wrap: true,
-});
+// --- Monaco Editor Setup ---
+require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
+
+// Worker Cross-Origin Fix for CDN
+window.MonacoEnvironment = {
+    getWorkerUrl: function (workerId, label) {
+        return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
+            self.MonacoEnvironment = {
+                baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/'
+            };
+            importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/base/worker/workerMain.js');`
+        )}`;
+    }
+};
+
+let editor; // Global editor instance
 
 // --- UI References ---
 const sidebar = document.getElementById('sidebar');
@@ -30,60 +31,93 @@ const runBtn = document.getElementById('runBtn');
 const stopBtn = document.getElementById('stopBtn');
 const terminalPane = document.getElementById('terminal-pane');
 const resizer = document.getElementById('resizer');
+const popupOverlay = document.getElementById('popup-overlay');
+const popupFrame = document.getElementById('popup-content-frame');
 
-// --- State Management (Virtual File System) ---
-// デフォルトファイル群
+// --- Default Files ---
 const DEFAULT_FILES = {
     'main.py': {
-        content: `# Python Ultra Environment
+        content: `# Python Ultra Environment (VS Code Engine)
 import sys
-import utils # see utils.py
+import utils
 
-print(f"🐍 Python {sys.version.split()[0]}")
-print(f"Calc: {utils.add(10, 20)}")
+print(f"🐍 Python {sys.version.split()[0]} Running.")
+print(f"Utils: {utils.greet('Developer')}")
 
-# Try creating a file
-with open("data.txt", "w") as f:
-    f.write("Hello from File System!")
+# Minimap is shown on the right side -->
+# You can click it to jump!
 
-with open("data.txt", "r") as f:
-    print(f"Read: {f.read()}")
-
-# Import libraries automatically
-# import numpy as np
-# print(np.random.rand(3))
+# for i in range(100):
+#     print(f"Line {i} for testing minimap scroll...")
 `,
         mode: 'python'
     },
     'utils.py': {
-        content: `# Helper module
-def add(a, b):
-    return a + b
+        content: `def greet(name):
+    return f"Hello, {name}!"
 `,
         mode: 'python'
     },
     'index.html': {
-        content: `<!-- Web Mode Preview -->
-<!DOCTYPE html>
+        content: `<!DOCTYPE html>
 <html>
 <head>
 <style>
-  body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
-  h1 { color: #e91e63; }
+  body { font-family: sans-serif; padding: 20px; background: #f9f9f9; }
+  .box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+  h1 { color: #007acc; }
 </style>
 </head>
 <body>
-  <h1>Hello Web</h1>
-  <button onclick="alert('Clicked!')">Click Me</button>
+  <div class="box">
+    <h1>Web Preview</h1>
+    <p>This is rendered in an iframe.</p>
+    <button onclick="alert('Working!')">Test Button</button>
+  </div>
 </body>
 </html>`,
         mode: 'html'
     }
 };
 
-// LocalStorageから読み込むか、初期値を使う
 let files = JSON.parse(localStorage.getItem('pypanel_files')) || DEFAULT_FILES;
 let currentFileName = localStorage.getItem('pypanel_current') || 'main.py';
+
+// --- Initialize Monaco ---
+require(['vs/editor/editor.main'], function() {
+    editor = monaco.editor.create(document.getElementById('editor-container'), {
+        value: files[currentFileName].content,
+        language: files[currentFileName].mode === 'js' ? 'javascript' : files[currentFileName].mode,
+        theme: 'vs-dark',
+        fontSize: 14,
+        automaticLayout: true,
+        minimap: {
+            enabled: true, // ★ミニマップ有効化★
+            renderCharacters: false,
+            scale: 0.75
+        },
+        padding: { top: 10 },
+        scrollBeyondLastLine: false,
+        fontFamily: "'JetBrains Mono', 'Consolas', monospace"
+    });
+
+    // 初期設定完了後
+    switchFile(currentFileName);
+    renderExplorer();
+    updateZenkakuDecorations();
+    
+    // イベントリスナー
+    editor.onDidChangeModelContent(() => {
+        updateZenkakuDecorations();
+        // 自動保存 (debounceなしの簡易実装)
+        files[currentFileName].content = editor.getValue();
+        localStorage.setItem('pypanel_files', JSON.stringify(files));
+    });
+
+    // キーボードショートカット
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, runCode);
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, saveCurrentFile);
+});
 
 // --- Worker Setup ---
 let worker = null;
@@ -121,10 +155,9 @@ function initWorker() {
 }
 initWorker();
 
-// --- Editor Logic ---
-
+// --- File System Logic ---
 function saveCurrentFile() {
-    if(files[currentFileName]) {
+    if(editor && files[currentFileName]) {
         files[currentFileName].content = editor.getValue();
         localStorage.setItem('pypanel_files', JSON.stringify(files));
         localStorage.setItem('pypanel_current', currentFileName);
@@ -132,34 +165,38 @@ function saveCurrentFile() {
 }
 
 function switchFile(fileName) {
-    saveCurrentFile(); // 前のファイルを保存
+    saveCurrentFile();
     currentFileName = fileName;
     
-    // エディタにセット
     const file = files[fileName];
-    editor.session.setMode("ace/mode/" + (file.mode === 'js' ? 'javascript' : file.mode));
-    editor.setValue(file.content, -1);
+    if(editor) {
+        const model = editor.getModel();
+        monaco.editor.setModelLanguage(model, file.mode === 'js' ? 'javascript' : file.mode);
+        editor.setValue(file.content);
+        
+        // 全角スペース検知などを再適用
+        updateZenkakuDecorations();
+        clearErrorDecorations();
+    }
     
-    // 言語選択ボックスの同期
+    // UI同期
     const langSelect = document.getElementById('langSelect');
     if (file.mode === 'python') langSelect.value = 'python';
     else if (file.mode === 'html') langSelect.value = 'web';
-    else langSelect.value = 'python'; // default
+    else langSelect.value = 'python';
 
     renderExplorer();
-    clearErrorMarkers();
 }
 
 function addNewFile() {
-    const name = prompt("File Name (e.g. script.py):", "new_file.py");
+    const name = prompt("Filename:", "new.py");
     if (!name) return;
     if (files[name]) { alert("Exists!"); return; }
 
     const ext = name.split('.').pop();
     let mode = 'python';
     if(ext === 'html') mode = 'html';
-    if(ext === 'js') mode = 'javascript';
-    if(ext === 'json') mode = 'json';
+    if(ext === 'js' || ext === 'javascript') mode = 'javascript';
 
     files[name] = { content: "", mode: mode };
     switchFile(name);
@@ -172,7 +209,7 @@ function deleteFile(name, e) {
     if (currentFileName === name) {
         currentFileName = Object.keys(files)[0] || "";
         if(currentFileName) switchFile(currentFileName);
-        else editor.setValue(""); // No files
+        else editor.setValue("");
     }
     renderExplorer();
     saveCurrentFile();
@@ -183,17 +220,12 @@ function renderExplorer() {
     tabsContainer.innerHTML = "";
 
     Object.keys(files).forEach(name => {
-        // Sidebar Item
         const item = document.createElement('div');
         item.className = `file-item ${name === currentFileName ? 'active' : ''}`;
-        item.innerHTML = `
-            <span>${getFileIcon(name)} ${name}</span>
-            <span class="del-btn" onclick="deleteFile('${name}', event)">×</span>
-        `;
+        item.innerHTML = `<span>${getFileIcon(name)} ${name}</span><span class="del-btn" onclick="deleteFile('${name}', event)">×</span>`;
         item.onclick = () => switchFile(name);
         fileList.appendChild(item);
 
-        // Tab Item (Active only or all? Let's show active + generic)
         if (name === currentFileName) {
             const tab = document.createElement('div');
             tab.className = "tab active";
@@ -210,54 +242,111 @@ function getFileIcon(name) {
     return '📄';
 }
 
-// --- Execution Logic ---
+// --- Decorations (Zenkaku Space & Errors) ---
+let zenkakuDecorations = [];
+let errorDecorations = [];
 
+function updateZenkakuDecorations() {
+    if(!editor) return;
+    const model = editor.getModel();
+    const text = model.getValue();
+    const matches = model.findMatches('　', false, false, false, null, true);
+    
+    const newDecorations = matches.map(match => ({
+        range: match.range,
+        options: {
+            isWholeLine: false,
+            className: 'zenkaku-decoration',
+            inlineClassName: 'zenkaku-bg' // CSSでスタイル定義が必要だが今回は簡易的にボーダー
+        }
+    }));
+    
+    // Monacoの方法で適用
+    // CSSハック: MonacoはCSSクラスを指定するので、styleタグに以下を追加する必要がある
+    // 今回は簡易的に実装するため、HTMLのstyleに追加済みとする（.zenkaku-bgなど）
+    // と言いたいが、styleタグへの動的追加を行う
+    
+    zenkakuDecorations = model.deltaDecorations(zenkakuDecorations, newDecorations);
+}
+// Monaco用のCSS追加
+const style = document.createElement('style');
+style.innerHTML = `
+    .zenkaku-bg { background: rgba(255, 165, 0, 0.4); border-bottom: 2px solid orange; }
+    .errorLine { background: rgba(255, 0, 0, 0.2); }
+`;
+document.head.appendChild(style);
+
+function highlightError(line) {
+    if(!editor) return;
+    const model = editor.getModel();
+    errorDecorations = model.deltaDecorations(errorDecorations, [
+        {
+            range: new monaco.Range(line, 1, line, 1),
+            options: {
+                isWholeLine: true,
+                className: 'errorLine',
+                glyphMarginClassName: 'errorGlyph'
+            }
+        }
+    ]);
+    editor.revealLineInCenter(line);
+}
+function clearErrorDecorations() {
+    if(!editor) return;
+    errorDecorations = editor.getModel().deltaDecorations(errorDecorations, []);
+}
+
+
+// --- Popup Logic ---
+function openPopup() {
+    saveCurrentFile();
+    const mode = files[currentFileName].mode;
+    if (mode === 'python') {
+        alert("Pythonはポップアップ表示できません。Webファイルを選択してください。");
+        return;
+    }
+    popupOverlay.style.display = 'flex';
+    popupFrame.srcdoc = editor.getValue();
+}
+function closePopup() {
+    popupOverlay.style.display = 'none';
+    popupFrame.srcdoc = "";
+}
+
+
+// --- Execution Logic ---
 function runCode() {
     saveCurrentFile();
     clearOutput();
-    clearErrorMarkers();
+    clearErrorDecorations();
     
     const file = files[currentFileName];
     const mode = document.getElementById('langSelect').value;
 
     if (mode === 'web' || currentFileName.endsWith('.html')) {
-        // Web Mode
         outputDiv.style.display = 'none';
         previewFrame.style.display = 'block';
         previewFrame.srcdoc = editor.getValue();
         log("Web Preview Updated.", 'log-info');
     } else {
-        // Python / JS
         outputDiv.style.display = 'block';
         previewFrame.style.display = 'none';
         
         if (mode === 'python') {
-            if (!isWorkerReady) { log("⏳ Engine loading...", 'log-warn'); return; }
+            if (!isWorkerReady) { log("⏳ Engine loading...", 'log-err'); return; }
             setRunning(true);
             
-            // 重要: 全てのファイルをWorkerの仮想ファイルシステムに書き込む
             const fileData = {};
-            for (let f in files) {
-                fileData[f] = files[f].content;
-            }
-
-            // ライブラリ検知
+            for (let f in files) fileData[f] = files[f].content;
+            
             const code = editor.getValue();
             const packages = [];
-            if(code.includes('import pandas') || code.includes('from pandas')) packages.push('pandas');
-            if(code.includes('import numpy') || code.includes('from numpy')) packages.push('numpy');
-            if(code.includes('import matplotlib') || code.includes('from matplotlib')) packages.push('matplotlib');
-            if(code.includes('import scipy') || code.includes('from scipy')) packages.push('scipy');
+            if(code.includes('pandas')) packages.push('pandas');
+            if(code.includes('numpy')) packages.push('numpy');
+            if(code.includes('matplotlib')) packages.push('matplotlib');
 
-            worker.postMessage({ 
-                cmd: 'run', 
-                code: code, 
-                files: fileData, // 全ファイル送信
-                packages: packages 
-            });
-
+            worker.postMessage({ cmd: 'run', code: code, files: fileData, packages: packages });
         } else if (mode === 'javascript') {
-            // Node-like JS execution
             try {
                 const originalLog = console.log;
                 console.log = (...args) => log(args.join(' '));
@@ -273,141 +362,50 @@ function runCode() {
 function stopCode() {
     if (worker) {
         worker.terminate();
-        log("⛔ Stopped by user.", 'log-err');
-        initWorker(); // Restart
+        log("⛔ Stopped.", 'log-err');
+        initWorker();
     }
     setRunning(false);
 }
 
 // --- Utils ---
-
 function log(msg, cls) {
     const d = document.createElement('div');
     d.textContent = msg;
     if(cls) d.className = cls;
     outputDiv.appendChild(d);
-    scrollToBottom();
-}
-
-function scrollToBottom() {
     outputDiv.scrollTop = outputDiv.scrollHeight;
 }
-
-function clearOutput() {
-    outputDiv.innerHTML = "";
-    if(previewFrame.contentWindow) previewFrame.srcdoc = "";
-}
-
+function clearOutput() { outputDiv.innerHTML = ""; if(previewFrame.contentWindow) previewFrame.srcdoc = ""; }
 function setRunning(state) {
     runBtn.style.display = state ? 'none' : 'inline-flex';
     stopBtn.style.display = state ? 'inline-flex' : 'none';
     statusSpan.textContent = state ? "Running..." : "Ready";
 }
-
 function updateStatus(msg, color) {
     statusSpan.textContent = msg;
     statusSpan.style.color = color;
 }
-
-// 全角スペース検知
-const Range = ace.require("ace/range").Range;
-let zenkakuMarkers = [];
-function checkZenkaku() {
-    const session = editor.getSession();
-    zenkakuMarkers.forEach(id => session.removeMarker(id));
-    zenkakuMarkers = [];
-    const lines = session.getDocument().getAllLines();
-    lines.forEach((line, row) => {
-        for(let col=0; col<line.length; col++){
-            if(line[col] === '\u3000'){
-                zenkakuMarkers.push(session.addMarker(new Range(row,col,row,col+1), "zenkaku-space", "text"));
-            }
-        }
-    });
-}
-editor.on('change', checkZenkaku);
-
-// エラーハイライト
-let errMarkers = [];
-function highlightError(line) {
-    const session = editor.getSession();
-    errMarkers.push(session.addMarker(new Range(line-1, 0, line-1, 100), "ace_error-line", "fullLine"));
-    editor.scrollToLine(line-1, true, true, function(){});
-}
-function clearErrorMarkers() {
-    const session = editor.getSession();
-    errMarkers.forEach(id => session.removeMarker(id));
-    errMarkers = [];
-}
-
-// --- Resizer Logic ---
-let isResizing = false;
-resizer.addEventListener('mousedown', (e) => {
-    isResizing = true;
-    document.body.style.cursor = 'row-resize';
-});
-document.addEventListener('mousemove', (e) => {
-    if (!isResizing) return;
-    const h = window.innerHeight - e.clientY;
-    if (h > 50 && h < window.innerHeight - 100) {
-        terminalPane.style.height = h + 'px';
-    }
-});
-document.addEventListener('mouseup', () => {
-    isResizing = false;
-    document.body.style.cursor = 'default';
-    editor.resize(); // Ace Editorのリサイズ補正
-});
-
-// Sidebar Toggle
-function toggleSidebar() {
-    sidebar.classList.toggle('open');
-    if(window.innerWidth > 768) {
-        sidebar.style.width = sidebar.style.width === '0px' ? '200px' : '0px';
-    }
-    setTimeout(() => editor.resize(), 200);
-}
-
-// Format Code (簡易版)
-function formatCode() {
-    const val = editor.getValue();
-    // 簡易的な行末空白削除など
-    const formatted = val.split('\n').map(l => l.trimRight()).join('\n');
-    editor.setValue(formatted, -1);
-}
-
-// Download
-function downloadFile() {
-    const blob = new Blob([editor.getValue()], {type: 'text/plain'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = currentFileName;
-    a.click();
-}
-
 function changeLanguage() {
-    // Dropdown change logic handled mostly by file switching, 
-    // but can be used to force mode
     const val = document.getElementById('langSelect').value;
-    if(val === 'web') {
-        if(!files['index.html']) {
-             files['index.html'] = { content: DEFAULT_FILES['index.html'].content, mode: 'html' };
-             renderExplorer();
-        }
+    if(val === 'web' && !files['index.html']) {
+        files['index.html'] = { content: DEFAULT_FILES['index.html'].content, mode: 'html' };
+        renderExplorer();
+        switchFile('index.html');
+    } else if (val === 'web') {
         switchFile('index.html');
     }
 }
 
-// 初期化
-switchFile(currentFileName);
-setTimeout(checkZenkaku, 500);
-
-// ショートカット
-document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault(); runCode();
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault(); saveCurrentFile();
-    }
+// --- Resizer & Sidebar ---
+let isResizing = false;
+resizer.addEventListener('mousedown', () => { isResizing = true; document.body.style.cursor = 'row-resize'; });
+document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+    const h = window.innerHeight - e.clientY;
+    if (h > 50 && h < window.innerHeight - 100) terminalPane.style.height = h + 'px';
+    if(editor) editor.layout();
 });
+document.addEventListener('mouseup', () => { isResizing = false; document.body.style.cursor = 'default'; if(editor) editor.layout(); });
+function toggleSidebar() { sidebar.classList.toggle('open'); setTimeout(() => { if(editor) editor.layout(); }, 200); }
+window.onresize = () => { if(editor) editor.layout(); };
