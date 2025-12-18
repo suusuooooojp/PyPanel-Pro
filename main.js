@@ -9,11 +9,8 @@ function updateMonitor() {
     const delta = (now - lastLoop);
     lastLoop = now;
     
-    // Update every 2 seconds to reduce flicker
     if (now - lastMonitorUpdate > 2000) {
         lastMonitorUpdate = now;
-        
-        // Pseudo CPU Load
         const fps = Math.round(1000 / (delta || 1));
         let load = Math.max(0, 100 - (fps / 60 * 100)); 
         if(load > 100) load = 100;
@@ -34,7 +31,7 @@ function updateMonitor() {
 }
 requestAnimationFrame(updateMonitor);
 
-// --- Zoom Logic ---
+// --- Zoom ---
 let currentZoom = 1.0;
 function changeZoom(delta) {
     currentZoom += delta;
@@ -47,7 +44,7 @@ function changeZoom(delta) {
     if(editor) editor.layout();
 }
 
-// --- Layout Logic ---
+// --- Layout ---
 let isRightPreview = false;
 function toggleLayout() {
     isRightPreview = !isRightPreview;
@@ -59,7 +56,7 @@ function toggleLayout() {
         rightPane.classList.add('show');
         resizeV.style.display = 'flex';
         bottomPrevTab.style.display = 'none';
-        switchPanel('terminal'); // Force terminal on bottom
+        switchPanel('terminal');
     } else {
         rightPane.classList.remove('show');
         resizeV.style.display = 'none';
@@ -71,17 +68,15 @@ function toggleLayout() {
 function toggleSidebar() {
     const sb = document.getElementById('sidebar');
     const isMobile = window.innerWidth <= 768;
-    
     if(isMobile) {
         sb.classList.toggle('open');
     } else {
-        // PC: Toggle 'collapsed' class to set width to 0
         sb.classList.toggle('collapsed');
     }
     setTimeout(() => editor.layout(), 250);
 }
 
-// --- Monaco Setup ---
+// --- Monaco ---
 require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
 window.MonacoEnvironment = { getWorkerUrl: () => `data:text/javascript;charset=utf-8,${encodeURIComponent(`self.MonacoEnvironment = { baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/' }; importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/base/worker/workerMain.js');`)}` };
 
@@ -105,7 +100,7 @@ require(['vs/editor/editor.main'], function() {
         language: getLang(currentPath),
         theme: 'vs-dark',
         fontSize: 14,
-        automaticLayout: true, // Auto fit
+        automaticLayout: true,
         minimap: { enabled: true },
         padding: { top: 10 }
     });
@@ -121,7 +116,6 @@ require(['vs/editor/editor.main'], function() {
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, runProject);
     
-    // Init folders
     Object.keys(files).forEach(p => {
         const parts = p.split('/');
         if(parts.length > 1) expandedFolders.add(parts[0]);
@@ -193,7 +187,6 @@ function renderTree() {
             };
             content.oncontextmenu = (e) => showCtx(e, fullPath, isFile);
             
-            // D&D
             content.ondragstart = (e) => { dragSrc = fullPath; e.dataTransfer.effectAllowed = 'move'; };
             content.ondragover = (e) => { e.preventDefault(); if(!isFile) content.classList.add('drag-over'); };
             content.ondragleave = (e) => { content.classList.remove('drag-over'); };
@@ -381,7 +374,7 @@ function switchPanel(p) {
     document.getElementById('bottom-preview-area').className = p === 'preview' ? 'show' : '';
 }
 
-// --- Resizers (Fixed Logic) ---
+// --- Resizers (Corrected) ---
 const rH = document.getElementById('resizer-h');
 const bPanel = document.getElementById('bottom-panel');
 rH.addEventListener('mousedown', initDragH);
@@ -396,7 +389,8 @@ function initDragH(e) {
 }
 function doDragH(e) {
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const h = window.innerHeight - clientY - 24; // 24 is status bar
+    const h = window.innerHeight - clientY - 24; // Status bar offset
+    // Min height limit to avoid layout break
     if(h > 30 && h < window.innerHeight - 50) { 
         bPanel.style.height = h + 'px'; 
         if(editor) editor.layout(); 
@@ -408,6 +402,15 @@ function stopDragH() {
     document.removeEventListener('mouseup', stopDragH);
     document.removeEventListener('touchend', stopDragH);
 }
+
+// Auto resize on window change
+window.addEventListener('resize', () => {
+    if(editor) editor.layout();
+    // Prevent panel from being too large on window shrink
+    if(bPanel.offsetHeight > window.innerHeight - 100) {
+        bPanel.style.height = '200px';
+    }
+});
 
 const rV = document.getElementById('resizer-v');
 const rPane = document.getElementById('right-preview-pane');
