@@ -20,8 +20,8 @@ self.onmessage = async (e) => {
     if (cmd === 'run' && pyodide) {
         try {
             if (files) {
+                // Ensure directories exist and write files
                 for (const [filename, content] of Object.entries(files)) {
-                    // 簡易ディレクトリ作成
                     const parts = filename.split('/');
                     if(parts.length > 1) {
                         let path = "";
