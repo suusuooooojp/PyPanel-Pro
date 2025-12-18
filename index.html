@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PyPanel</title>
+    <title>PyPanel Ultra Ultimate</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -43,34 +43,27 @@
         .icon-btn { background: transparent; color: #aaa; padding: 6px; font-size: 18px; cursor: pointer; }
         .icon-btn:hover { color: #fff; background: #444; border-radius: 4px; }
 
-        /* Workspace (Sidebar + Center) */
+        /* Workspace */
         #workspace { flex: 1; display: flex; overflow: hidden; position: relative; }
         
-        /* Sidebar (Fixed width approach) */
+        /* Sidebar */
         #sidebar { 
             width: 240px; background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column;
-            flex-shrink: 0; /* Important */
-            transition: width 0.2s ease, opacity 0.1s ease;
-            overflow: hidden; /* Hide content when closed */
-            white-space: nowrap;
+            flex-shrink: 0; transition: width 0.2s ease, opacity 0.1s ease; overflow: hidden; white-space: nowrap;
         }
-        /* Class to collapse sidebar */
         #sidebar.collapsed { width: 0 !important; border-right: none; opacity: 0; }
 
         .sidebar-header { padding: 10px; font-size: 11px; font-weight: bold; color: #888; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; min-height: 35px; }
         #file-tree { flex: 1; overflow-y: auto; padding: 5px 0; }
         
-        /* Tree Items */
         .tree-node { color: #ccc; font-size: 13px; display: flex; flex-direction: column; }
         .tree-content { display: flex; align-items: center; padding: 4px 10px; cursor: pointer; border: 1px solid transparent; }
         .tree-content:hover { background: #2a2d2e; }
         .tree-content.active { background: #37373d; color: white; border-left: 2px solid var(--accent); }
         .tree-content.drag-over { background: #444; border: 1px dashed #007acc; }
-        
         .tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 5px; }
         .tree-menu-btn { padding: 0 8px; color: #888; font-weight: bold; cursor: pointer; visibility: hidden; }
         .tree-content:hover .tree-menu-btn { visibility: visible; }
-
         .tree-children { padding-left: 12px; display: none; border-left: 1px solid #444; margin-left: 10px; }
         .tree-children.open { display: block; }
         .arrow { font-size: 10px; color: #999; display: inline-block; width: 10px; transition: transform 0.1s; }
@@ -78,7 +71,6 @@
 
         /* Center Area */
         #center-area { flex: 1; display: flex; min-width: 0; height: 100%; position: relative; }
-        
         #editor-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100%; }
         #tabs { height: 35px; background: #2d2d2d; display: flex; align-items: center; overflow-x: auto; flex-shrink: 0; border-bottom: 1px solid #111; }
         .tab { padding: 0 15px; height: 100%; display: flex; align-items: center; font-size: 13px; color: #888; background: #2d2d2d; cursor: pointer; border-right: 1px solid #1e1e1e; min-width: 80px; justify-content: center; white-space: nowrap; }
@@ -86,28 +78,40 @@
         #editor-container { flex: 1; overflow: hidden; position: relative; }
 
         /* Right Preview */
-        #right-preview-pane { 
-            width: 40%; background: #fff; display: none; flex-direction: column; border-left: 1px solid #333;
-        }
+        #right-preview-pane { width: 40%; background: #fff; display: none; flex-direction: column; border-left: 1px solid #333; }
         #right-preview-pane.show { display: flex; }
 
-        /* Bottom Panel */
+        /* Bottom Panel - Fixed Layout Logic */
         #bottom-panel { 
-            height: 200px; background: var(--bg-panel); display: flex; flex-direction: column; 
-            min-height: 30px; /* Min height for tabs */
-            flex-shrink: 0; border-top: 1px solid #333;
+            height: 200px; background: var(--bg-panel); 
+            display: flex; flex-direction: column; 
+            min-height: 30px; flex-shrink: 0; 
+            border-top: 1px solid #333;
         }
-        #panel-tabs { height: 30px; background: #222; display: flex; border-bottom: 1px solid #333; flex-shrink: 0; }
+        #panel-tabs { 
+            height: 30px; background: #222; 
+            display: flex; border-bottom: 1px solid #333; 
+            flex-shrink: 0; 
+        }
         .panel-tab { padding: 0 15px; font-size: 12px; color: #888; display: flex; align-items: center; cursor: pointer; border-right: 1px solid #333; }
         .panel-tab.active { background: #1e1e1e; color: white; font-weight: bold; border-top: 2px solid var(--accent); }
         
-        /* Content Areas - 100% height fill */
-        #terminal-area { flex: 1; display: none; overflow: hidden; flex-direction: column; height: 100%; }
-        #bottom-preview-area { flex: 1; display: none; overflow: hidden; flex-direction: column; height: 100%; }
-        
+        /* Content Areas - Fill 100% of remaining space */
+        #terminal-area, #bottom-preview-area { 
+            flex: 1; display: none; overflow: hidden; 
+            flex-direction: column; height: 100%; 
+            background: var(--bg-panel); /* 背景色統一 */
+        }
         #terminal-area.show, #bottom-preview-area.show { display: flex; }
 
-        #output { flex: 1; padding: 10px; overflow: auto; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5; color: #d4d4d4; user-select: text; white-space: pre-wrap; }
+        /* Output needs to grow to fill space */
+        #output { 
+            flex: 1; padding: 10px; 
+            overflow-y: auto; overflow-x: hidden;
+            font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5; color: #d4d4d4; 
+            user-select: text; white-space: pre-wrap; word-break: break-all;
+            background: var(--bg-panel); /* 背景色統一 */
+        }
         iframe { width: 100%; height: 100%; border: none; background: white; flex: 1; display: block; }
 
         /* Status Bar */
@@ -127,33 +131,20 @@
             border-top: 1px solid #444; border-bottom: 1px solid #444;
         }
         .resizer-h::after { content: "•••"; color: #666; font-size: 10px; letter-spacing: 2px; }
-        
-        .resizer-v { 
-            width: 8px; background: #2d2d2d; cursor: col-resize; z-index: 20; 
-            display: flex; align-items: center; justify-content: center;
-        }
+        .resizer-v { width: 8px; background: #2d2d2d; cursor: col-resize; z-index: 20; display: flex; align-items: center; justify-content: center; }
 
-        /* Loading */
         #loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1e1e1e; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; }
         .spinner { width: 40px; height: 40px; border: 3px solid #333; border-top: 3px solid #007acc; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* Context Menu */
         #context-menu { position: absolute; background: #252526; border: 1px solid #444; display: none; z-index: 4000; min-width: 160px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border-radius: 4px; overflow: hidden; }
         .ctx-item { padding: 12px 15px; font-size: 14px; cursor: pointer; color: #eee; border-bottom: 1px solid #333; }
         .ctx-item:active, .ctx-item:hover { background: #007acc; }
 
-        /* Mobile Adjustments */
         @media (max-width: 768px) {
-            /* Mobile: Sidebar behaves as overlay */
-            #sidebar { 
-                position: absolute; height: 100%; z-index: 50; width: 280px; 
-                transform: translateX(-100%); transition: transform 0.2s ease;
-                box-shadow: 2px 0 10px rgba(0,0,0,0.5);
-            }
-            #sidebar.open { transform: translateX(0); width: 280px !important; }
-            #sidebar.collapsed { width: 280px !important; transform: translateX(-100%); opacity: 1; } /* Reset collapse logic for mobile */
-            
+            #sidebar { position: absolute; height: 100%; z-index: 50; transform: translateX(-100%); width: 280px; box-shadow: 2px 0 10px rgba(0,0,0,0.5); }
+            #sidebar.open { transform: translateX(0); }
+            #sidebar.collapsed { width: 280px !important; transform: translateX(-100%); opacity: 1; }
             #right-preview-pane { display: none !important; }
             h1 span { display: none; }
         }
@@ -232,7 +223,6 @@
     </div>
 </div>
 
-<!-- Status Bar -->
 <div id="status-bar">
     <div class="status-item"><span class="status-icon">⚡</span> CPU: <span id="cpu-val">0%</span></div>
     <div class="status-item"><span class="status-icon">💾</span> Mem: <span id="mem-val">--</span></div>
@@ -240,7 +230,6 @@
     <div class="status-item" style="margin-left:auto;"><span class="status-icon">📄</span> <span id="file-count">0</span> Files</div>
 </div>
 
-<!-- Context Menu -->
 <div id="context-menu">
     <div class="ctx-item" onclick="ctxRun()">▶ 実行</div>
     <div class="ctx-item" onclick="ctxRename()">✏️ 名前変更</div>
