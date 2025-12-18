@@ -1,27 +1,38 @@
-// --- Service Worker & Update Logic ---
+// --- Service Worker & Update Logic (Fixed) ---
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
-        // 更新が見つかった場合
         reg.onupdatefound = () => {
             const installingWorker = reg.installing;
             installingWorker.onstatechange = () => {
-                if (installingWorker.state === 'installed') {
-                    if (navigator.serviceWorker.controller) {
-                        // 新しいコンテンツが利用可能
-                        document.getElementById('update-bar').style.display = 'block';
-                    }
+                // Update only if there is already a controller (not first load)
+                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    document.getElementById('update-bar').style.display = 'block';
                 }
             };
         };
     }).catch(console.error);
+    
+    // Online/Offline Status
+    function updateOnlineStatus() {
+        const el = document.getElementById('net-status');
+        if (navigator.onLine) {
+            el.innerHTML = '📡 Online';
+            el.className = 'status-badge online';
+        } else {
+            el.innerHTML = '📴 Offline';
+            el.className = 'status-badge offline';
+        }
+    }
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    updateOnlineStatus();
 }
 
-// --- Loading UI ---
 function updateProgress(percent, text) {
     const bar = document.getElementById('progress-bar');
     const txt = document.getElementById('loading-text');
-    if (bar) bar.style.width = percent + '%';
-    if (txt) txt.innerText = text;
+    if(bar) bar.style.width = percent + '%';
+    if(txt) txt.innerText = text;
 }
 
 // --- Monaco Setup ---
@@ -38,23 +49,22 @@ window.MonacoEnvironment = {
     )}`
 };
 
-// --- Globals ---
 let editor;
 let files = {};
 let currentPath = "";
 let expandedFolders = new Set();
 let zenkakuDecorations = [];
+let dragSrc = null;
 
 const DEFAULT_FILES = {
-    'main.py': { content: `import sys\nimport random\n\n# Long line test for horizontal scrolling...........................................................\nprint(f"Python {sys.version.split()[0]} Ready")`, mode: 'python' },
-    'index.html': { content: `<!DOCTYPE html>\n<html>\n<head>\n  <link rel="stylesheet" href="css/style.css">\n</head>\n<body>\n  <h1>PyPanel Offline</h1>\n  <script src="js/main.js"></script>\n</body>\n</html>`, mode: 'html' },
+    'main.py': { content: `import sys\nimport random\n\n# Offline Ready!\nprint(f"Python {sys.version.split()[0]}")\nprint(f"Rand: {random.randint(1,100)}")`, mode: 'python' },
+    'index.html': { content: `<!DOCTYPE html>\n<html>\n<head>\n  <link rel="stylesheet" href="css/style.css">\n</head>\n<body>\n  <h1>Offline IDE</h1>\n  <script src="js/main.js"></script>\n</body>\n</html>`, mode: 'html' },
     'css/style.css': { content: `body { background: #222; color: #fff; text-align: center; padding: 50px; }`, mode: 'css' },
     'js/main.js': { content: `console.log("Offline Ready");`, mode: 'javascript' }
 };
 
-try {
-    files = JSON.parse(localStorage.getItem('pypanel_files')) || DEFAULT_FILES;
-} catch(e) { files = DEFAULT_FILES; }
+try { files = JSON.parse(localStorage.getItem('pypanel_files')) || DEFAULT_FILES; } 
+catch(e) { files = DEFAULT_FILES; }
 
 // --- Editor Init ---
 updateProgress(50, "Initializing...");
@@ -72,15 +82,11 @@ require(['vs/editor/editor.main'], function() {
         minimap: { enabled: true, scale: 0.75 },
         fontFamily: "'JetBrains Mono', monospace",
         padding: { top: 10 },
-        // ★ 横スクロール対応設定 ★
-        wordWrap: "off", // 折り返し無効 = 横スクロール有効
+        // Enhanced Scroll & Wrap
+        wordWrap: "off",
         scrollBeyondLastLine: false,
-        scrollbar: {
-            useShadows: false,
-            verticalHasArrows: false,
-            horizontal: "visible", // 横スクロールバーを常に許可
-            horizontalScrollbarSize: 12
-        }
+        scrollbar: { useShadows: false, verticalHasArrows: false, horizontal: "visible" },
+        autoClosingBrackets: "always" // 自動括弧閉じ
     });
 
     updateProgress(100, "Done!");
@@ -115,23 +121,23 @@ require(['vs/editor/editor.main'], function() {
     renderTree();
     updateTabs();
     updateZenkaku();
-    
-}, function(err) {
-    console.error(err);
-    alert("Editor load failed. Check internet connection for first load.");
 });
 
-// --- Python Worker Init (Background) ---
+// --- Python Worker (Offline Robustness) ---
 let pyWorker = null;
-try {
-    pyWorker = new Worker('py-worker.js');
-    pyWorker.onmessage = (e) => {
-        const d = e.data;
-        if(d.type === 'stdout') log(d.text);
-        else if(d.type === 'results') { log("<= " + d.results, '#4ec9b0'); resetRunBtn(); }
-        else if(d.type === 'error') { log("Error: " + d.error, 'red'); resetRunBtn(); }
-    };
-} catch(e) { console.error(e); }
+function initPyWorker() {
+    try {
+        pyWorker = new Worker('py-worker.js');
+        pyWorker.onmessage = (e) => {
+            const d = e.data;
+            if(d.type === 'stdout') log(d.text);
+            else if(d.type === 'results') { log("<= " + d.results, '#4ec9b0'); resetRunBtn(); }
+            else if(d.type === 'error') { log("Error: " + d.error, 'red'); resetRunBtn(); }
+            else if(d.type === 'ready') log("🐍 Python Engine Ready", '#4caf50');
+        };
+    } catch(e) { console.error(e); }
+}
+initPyWorker();
 
 function registerPythonCompletion() {
     monaco.languages.registerCompletionItemProvider('python', {
@@ -166,6 +172,7 @@ const style = document.createElement('style');
 style.innerHTML = `.zenkaku-bg { background: rgba(255, 165, 0, 0.3); border: 1px solid orange; }`;
 document.head.appendChild(style);
 
+// --- File System ---
 function renderTree() {
     const tree = document.getElementById('file-tree');
     tree.innerHTML = "";
@@ -191,8 +198,10 @@ function renderTree() {
             const fullPath = prefix ? `${prefix}/${key}` : key;
             
             const node = document.createElement('div');
+            node.className = 'tree-node';
             const content = document.createElement('div');
             content.className = `tree-content ${isFile && item.path === currentPath ? 'active' : ''}`;
+            content.draggable = true;
             
             let icon = isFile ? getIcon(key) : (expandedFolders.has(fullPath) ? '📂' : '📁');
             const menuBtn = document.createElement('span');
@@ -200,16 +209,22 @@ function renderTree() {
             menuBtn.innerHTML = '⋮';
             menuBtn.onclick = (e) => { e.stopPropagation(); showCtx(e, fullPath, isFile); };
 
-            content.innerHTML = `<span style="margin-right:5px;width:15px;display:inline-block;text-align:center;">${icon}</span><span class="tree-name">${key}</span>`;
+            content.innerHTML = `<span style="margin-right:5px;">${icon}</span><span class="tree-name">${key}</span>`;
             content.appendChild(menuBtn);
             
-            content.onclick = (e) => {
-                e.stopPropagation();
-                if(isFile) openFile(item.path);
-                else toggleFolder(fullPath);
+            // Events
+            content.onclick = (e) => { e.stopPropagation(); if(isFile) openFile(item.path); else toggleFolder(fullPath); };
+            content.ondragstart = (e) => { dragSrc = fullPath; e.dataTransfer.effectAllowed = 'move'; };
+            content.ondragover = (e) => { e.preventDefault(); if(!isFile) content.classList.add('drag-over'); };
+            content.ondragleave = (e) => { content.classList.remove('drag-over'); };
+            content.ondrop = (e) => {
+                e.preventDefault(); content.classList.remove('drag-over');
+                if(!dragSrc || dragSrc === fullPath) return;
+                moveEntry(dragSrc, fullPath + "/" + dragSrc.split('/').pop());
+                renderTree();
             };
-            node.appendChild(content);
 
+            node.appendChild(content);
             if(!isFile) {
                 const children = document.createElement('div');
                 children.className = `tree-children ${expandedFolders.has(fullPath) ? 'open' : ''}`;
