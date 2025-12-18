@@ -1,7 +1,7 @@
 // --- Service Worker ---
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
-// --- System Monitor (Slowed Down) ---
+// --- System Monitor (2sec Interval) ---
 let lastMonitorUpdate = 0;
 let lastLoop = Date.now();
 function updateMonitor() {
@@ -9,7 +9,7 @@ function updateMonitor() {
     const delta = (now - lastLoop);
     lastLoop = now;
     
-    // Update every 2 seconds
+    // Update every 2 seconds to reduce flicker
     if (now - lastMonitorUpdate > 2000) {
         lastMonitorUpdate = now;
         
@@ -65,7 +65,20 @@ function toggleLayout() {
         resizeV.style.display = 'none';
         bottomPrevTab.style.display = 'flex';
     }
-    if(editor) editor.layout();
+    if(editor) setTimeout(() => editor.layout(), 100);
+}
+
+function toggleSidebar() {
+    const sb = document.getElementById('sidebar');
+    const isMobile = window.innerWidth <= 768;
+    
+    if(isMobile) {
+        sb.classList.toggle('open');
+    } else {
+        // PC: Toggle 'collapsed' class to set width to 0
+        sb.classList.toggle('collapsed');
+    }
+    setTimeout(() => editor.layout(), 250);
 }
 
 // --- Monaco Setup ---
@@ -92,7 +105,7 @@ require(['vs/editor/editor.main'], function() {
         language: getLang(currentPath),
         theme: 'vs-dark',
         fontSize: 14,
-        automaticLayout: true,
+        automaticLayout: true, // Auto fit
         minimap: { enabled: true },
         padding: { top: 10 }
     });
@@ -123,7 +136,7 @@ function updateFileCount() {
     document.getElementById('file-count').innerText = Object.keys(files).length;
 }
 
-// --- File System (Nested + D&D) ---
+// --- File System ---
 function renderTree() {
     const tree = document.getElementById('file-tree');
     tree.innerHTML = "";
@@ -158,7 +171,6 @@ function renderTree() {
             content.className = `tree-content ${isFile && item.path === currentPath ? 'active' : ''}`;
             content.draggable = true;
             
-            // Icon
             let iconHtml = '';
             if (isFile) {
                 iconHtml = `<span class="file-spacer" style="width:15px;display:inline-block"></span>${getIcon(key)}`;
@@ -167,7 +179,6 @@ function renderTree() {
                 iconHtml = `<span class="arrow ${isOpen ? 'down' : ''}">▶</span>📁`;
             }
             
-            // Menu
             const menuBtn = document.createElement('span');
             menuBtn.className = 'tree-menu-btn';
             menuBtn.innerHTML = '⋮';
@@ -369,13 +380,8 @@ function switchPanel(p) {
     document.getElementById('terminal-area').className = p === 'terminal' ? 'show' : '';
     document.getElementById('bottom-preview-area').className = p === 'preview' ? 'show' : '';
 }
-function toggleSidebar() {
-    const sb = document.getElementById('sidebar');
-    sb.style.transform = sb.style.transform === 'translateX(-100%)' ? 'translateX(0)' : 'translateX(-100%)';
-    setTimeout(() => editor.layout(), 250);
-}
 
-// --- Resizers ---
+// --- Resizers (Fixed Logic) ---
 const rH = document.getElementById('resizer-h');
 const bPanel = document.getElementById('bottom-panel');
 rH.addEventListener('mousedown', initDragH);
@@ -390,8 +396,11 @@ function initDragH(e) {
 }
 function doDragH(e) {
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const h = window.innerHeight - clientY - 24;
-    if(h > 30) { bPanel.style.height = h + 'px'; editor.layout(); }
+    const h = window.innerHeight - clientY - 24; // 24 is status bar
+    if(h > 30 && h < window.innerHeight - 50) { 
+        bPanel.style.height = h + 'px'; 
+        if(editor) editor.layout(); 
+    }
 }
 function stopDragH() {
     document.removeEventListener('mousemove', doDragH);
