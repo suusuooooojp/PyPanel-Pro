@@ -1,7 +1,7 @@
 try {
     importScripts("https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js");
 } catch (e) {
-    self.postMessage({ type: 'error', error: "Pyodide load failed (Offline?): " + e.toString() });
+    self.postMessage({ type: 'error', error: "Pyodide Load Failed (Offline?): " + e.message });
 }
 
 let pyodide = null;
@@ -14,7 +14,7 @@ async function loadEngine() {
         });
         self.postMessage({ type: 'ready' });
     } catch (e) {
-        self.postMessage({ type: 'error', error: "Engine init failed: " + e.toString() });
+        self.postMessage({ type: 'error', error: "Engine Init Failed: " + e.toString() });
     }
 }
 
@@ -22,7 +22,11 @@ if (typeof loadPyodide !== 'undefined') loadEngine();
 
 self.onmessage = async (e) => {
     const { cmd, code, files } = e.data;
-    if (cmd === 'run' && pyodide) {
+    if (cmd === 'run') {
+        if (!pyodide) {
+            self.postMessage({ type: 'error', error: "Engine not ready. Please wait." });
+            return;
+        }
         try {
             if (files) {
                 for (const [filename, content] of Object.entries(files)) {
