@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PyPanel Ultra Ultimate</title>
+    <title>PyPanel Ultra Tabs</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -13,8 +13,8 @@
             --accent: #007acc;
             --text-main: #cccccc;
             --border: #333333;
-            --status-bar-bg: #007acc;
-            --status-bar-fg: #ffffff;
+            --tab-bg: #2d2d2d;
+            --tab-active: #1e1e1e;
         }
         * { box-sizing: border-box; }
         body { margin: 0; height: 100vh; background: var(--bg-dark); color: var(--text-main); font-family: 'Inter', sans-serif; overflow: hidden; display: flex; flex-direction: column; }
@@ -56,6 +56,7 @@
         .sidebar-header { padding: 10px; font-size: 11px; font-weight: bold; color: #888; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; min-height: 35px; }
         #file-tree { flex: 1; overflow-y: auto; padding: 5px 0; }
         
+        /* Tree Items */
         .tree-node { color: #ccc; font-size: 13px; display: flex; flex-direction: column; }
         .tree-content { display: flex; align-items: center; padding: 4px 10px; cursor: pointer; border: 1px solid transparent; }
         .tree-content:hover { background: #2a2d2e; }
@@ -69,55 +70,76 @@
         .arrow { font-size: 10px; color: #999; display: inline-block; width: 10px; transition: transform 0.1s; }
         .arrow.down { transform: rotate(90deg); }
 
-        /* Center Area (Main Layout) */
+        /* Center Area */
         #center-area { flex: 1; display: flex; min-width: 0; height: 100%; position: relative; }
         
-        /* Editor Pane (Left part of center) */
-        #editor-pane { 
-            flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100%; 
-            background: var(--bg-dark); /* Ensure background matches */
+        #editor-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100%; }
+        
+        /* Multi Tabs Style */
+        #tabs { 
+            height: 35px; background: var(--tab-bg); display: flex; align-items: center; 
+            overflow-x: auto; flex-shrink: 0; border-bottom: 1px solid #111;
         }
-        
-        #tabs { height: 35px; background: #2d2d2d; display: flex; align-items: center; overflow-x: auto; flex-shrink: 0; border-bottom: 1px solid #111; }
-        .tab { padding: 0 15px; height: 100%; display: flex; align-items: center; font-size: 13px; color: #888; background: #2d2d2d; cursor: pointer; border-right: 1px solid #1e1e1e; min-width: 80px; justify-content: center; white-space: nowrap; }
-        .tab.active { background: #1e1e1e; color: #fff; border-top: 2px solid var(--accent); }
-        
-        /* Editor Container: Fills remaining space */
-        #editor-container { flex: 1; overflow: hidden; position: relative; min-height: 0; }
+        /* Scrollbar hide */
+        #tabs::-webkit-scrollbar { height: 4px; }
+        #tabs::-webkit-scrollbar-thumb { background: #444; }
 
-        /* Right Preview Pane */
+        .tab { 
+            padding: 0 10px 0 15px; height: 100%; display: flex; align-items: center; font-size: 13px; 
+            color: #888; background: var(--tab-bg); cursor: pointer; border-right: 1px solid #1e1e1e; 
+            min-width: 100px; max-width: 200px; justify-content: space-between; white-space: nowrap;
+            user-select: none;
+        }
+        .tab:hover { background: #333; }
+        .tab.active { background: var(--tab-active); color: #fff; border-top: 2px solid var(--accent); }
+        .tab-name { overflow: hidden; text-overflow: ellipsis; }
+        .tab-close { 
+            margin-left: 8px; padding: 2px 5px; border-radius: 3px; font-size: 14px; color: #666;
+        }
+        .tab-close:hover { background: #444; color: #fff; }
+
+        #editor-container { flex: 1; overflow: hidden; position: relative; }
+
+        /* Right Preview */
         #right-preview-pane { width: 40%; background: #fff; display: none; flex-direction: column; border-left: 1px solid #333; }
         #right-preview-pane.show { display: flex; }
 
         /* Bottom Panel */
         #bottom-panel { 
             height: 200px; background: var(--bg-panel); display: flex; flex-direction: column; 
-            min-height: 30px; /* Tab height */
-            flex-shrink: 0; border-top: 1px solid #333;
-            transition: height 0.05s ease-out; /* Smooth snapping */
+            min-height: 30px; flex-shrink: 0; border-top: 1px solid #333;
         }
-        
         #panel-tabs { height: 30px; background: #222; display: flex; border-bottom: 1px solid #333; flex-shrink: 0; }
         .panel-tab { padding: 0 15px; font-size: 12px; color: #888; display: flex; align-items: center; cursor: pointer; border-right: 1px solid #333; }
         .panel-tab.active { background: #1e1e1e; color: white; font-weight: bold; border-top: 2px solid var(--accent); }
         
-        /* Content Areas */
         #terminal-area, #bottom-preview-area { 
-            flex: 1; display: none; overflow: hidden; flex-direction: column; 
-            height: 100%; background: var(--bg-panel); 
+            flex: 1; display: none; overflow: hidden; flex-direction: column; height: 100%; background: #1e1e1e;
         }
         #terminal-area.show, #bottom-preview-area.show { display: flex; }
 
+        /* Output & Shell Fixed */
         #output { 
             flex: 1; padding: 10px; overflow-y: auto; overflow-x: hidden;
             font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5; color: #d4d4d4; 
             user-select: text; white-space: pre-wrap; word-break: break-all;
         }
+        /* Shell Input Area */
+        .shell-line { 
+            display: flex; align-items: center;
+            background: #1e1e1e; padding: 0 10px 5px 10px; flex-shrink: 0;
+        }
+        .shell-prompt { color: #2ea043; margin-right: 8px; font-weight: bold; white-space: nowrap; }
+        #shell-input { 
+            flex: 1; background: transparent; border: none; color: #fff; 
+            font-family: 'JetBrains Mono', monospace; font-size: 13px; outline: none; 
+        }
+
         iframe { width: 100%; height: 100%; border: none; background: white; flex: 1; display: block; }
 
         /* Status Bar */
         #status-bar {
-            height: 24px; background: var(--status-bar-bg); color: var(--status-bar-fg);
+            height: 24px; background: #007acc; color: white;
             display: flex; align-items: center; padding: 0 10px; font-size: 11px;
             flex-shrink: 0; gap: 15px; font-family: 'Inter', sans-serif;
             z-index: 200;
@@ -126,13 +148,8 @@
         .status-icon { font-size: 12px; }
 
         /* Resizers */
-        .resizer-h { 
-            height: 12px; background: #2d2d2d; cursor: row-resize; z-index: 20; 
-            display: flex; justify-content: center; align-items: center; flex-shrink: 0;
-            border-top: 1px solid #444; border-bottom: 1px solid #444;
-        }
+        .resizer-h { height: 12px; background: #2d2d2d; cursor: row-resize; z-index: 20; display: flex; justify-content: center; align-items: center; flex-shrink: 0; border-top: 1px solid #444; border-bottom: 1px solid #444; }
         .resizer-h::after { content: "•••"; color: #666; font-size: 10px; letter-spacing: 2px; }
-        
         .resizer-v { width: 8px; background: #2d2d2d; cursor: col-resize; z-index: 20; display: flex; align-items: center; justify-content: center; }
 
         #loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1e1e1e; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; }
@@ -146,7 +163,7 @@
         @media (max-width: 768px) {
             #sidebar { position: absolute; height: 100%; z-index: 50; transform: translateX(-100%); width: 280px; box-shadow: 2px 0 10px rgba(0,0,0,0.5); }
             #sidebar.open { transform: translateX(0); }
-            #sidebar.collapsed { width: 280px !important; transform: translateX(-100%); }
+            #sidebar.collapsed { width: 280px !important; transform: translateX(-100%); opacity: 1; }
             #right-preview-pane { display: none !important; }
             h1 span { display: none; }
         }
@@ -188,13 +205,12 @@
 
         <div id="center-area">
             <div id="editor-pane">
+                <!-- Multi Tabs Container -->
                 <div id="tabs"></div>
                 <div id="editor-container"></div>
                 
-                <!-- Horizontal Resizer (Part of editor pane now) -->
                 <div class="resizer-h" id="resizer-h"></div>
                 
-                <!-- Bottom Panel -->
                 <div id="bottom-panel">
                     <div id="panel-tabs">
                         <div class="panel-tab active" id="tab-term" onclick="switchPanel('terminal')">TERMINAL</div>
@@ -205,10 +221,11 @@
                     <div id="terminal-area" class="show">
                         <div id="output" onclick="document.getElementById('shell-input').focus()">
                             <div id="term-log"></div>
-                            <div class="shell-line">
-                                <span class="shell-prompt">user@pypanel:~$</span>
-                                <input type="text" id="shell-input" autocomplete="off" style="flex:1; background:transparent; border:none; color:#fff; outline:none;">
-                            </div>
+                        </div>
+                        <!-- Fixed Input Line -->
+                        <div class="shell-line">
+                            <span class="shell-prompt">user@pypanel:~$</span>
+                            <input type="text" id="shell-input" autocomplete="off">
                         </div>
                     </div>
 
@@ -225,10 +242,9 @@
             </div>
         </div>
     </div>
-
-    <!-- Removed separate resizer-h div, moved inside editor-pane -->
 </div>
 
+<!-- Status Bar -->
 <div id="status-bar">
     <div class="status-item"><span class="status-icon">⚡</span> CPU: <span id="cpu-val">0%</span></div>
     <div class="status-item"><span class="status-icon">💾</span> Mem: <span id="mem-val">--</span></div>
