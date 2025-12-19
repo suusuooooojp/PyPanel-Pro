@@ -1,5 +1,8 @@
+// main.js
+
 // --- Service Worker ---
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+// 開発中のキャッシュ問題を避けるため、今回はSWを無効化します。必要なら戻してください。
+// if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
 // --- Monaco Setup ---
 require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
@@ -10,12 +13,16 @@ let editor;
 let files = {};
 let currentPath = "";
 let expandedFolders = new Set();
-let openedFiles = []; // Tabs
+let openedFiles = []; 
 let dragSrc = null;
+
+// input()用の共有バッファ (Cross-Origin headersが必要な環境で動作します)
+let sharedBuffer = null;
+let sharedStatus = null;
 
 // --- Init Data ---
 const DEFAULT_FILES = {
-    'main.py': { content: `import sys\nprint(f"Python {sys.version.split()[0]}")`, mode: 'python' },
+    'main.py': { content: `import sys\nn = input("Enter your name: ")\nprint(f"Hello, {n}!")\nprint(f"Python {sys.version.split()[0]}")`, mode: 'python' },
     'index.html': { content: `<!DOCTYPE html>\n<html>\n<body>\n<h1>Hello VS Code Style</h1>\n<script src="js/app.js"></script>\n</body>\n</html>`, mode: 'html' },
     'js/app.js': { content: `console.log("App Loaded");`, mode: 'javascript' },
     'css/style.css': { content: `body { background: #fff; }`, mode: 'css' }
@@ -25,6 +32,9 @@ try { files = JSON.parse(localStorage.getItem('pypanel_files')) || DEFAULT_FILES
 
 // --- Editor Init ---
 require(['vs/editor/editor.main'], function() {
+    // Python補完機能の登録
+    registerPythonCompletion();
+
     currentPath = Object.keys(files)[0] || "main.py";
     openedFiles = [currentPath];
 
@@ -65,14 +75,91 @@ require(['vs/editor/editor.main'], function() {
 
     renderTree();
     renderTabs();
+    initPyWorker(); // Worker初期化
 });
+
+// --- Python IntelliSense (補完機能) ---
+function registerPythonCompletion() {
+    monaco.languages.registerCompletionItemProvider('python', {
+        provideCompletionItems: function (model, position) {
+            const word = model.getWordUntilPosition(position);
+            const range = {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn
+            };
+
+            // Python Keywords
+            const keywords = [
+                'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break',
+                'class', 'continue', 'def', 'del', 'elif', 'else', 'except', 'finally',
+                'for', 'from', 'global', 'if', 'import', 'in', 'is', 'lambda', 'nonlocal',
+                'not', 'or', 'pass', 'raise', 'return', 'try', 'while', 'with', 'yield',
+                'print', 'input', 'len', 'range', 'int', 'str', 'float', 'list', 'dict', 
+                'set', 'tuple', 'bool', 'open', 'dir', 'help', 'type'
+            ];
+
+            const suggestions = keywords.map(k => ({
+                label: k,
+                kind: monaco.languages.CompletionItemKind.Keyword,
+                insertText: k,
+                range: range
+            }));
+
+            // Snippets
+            suggestions.push({
+                label: 'def',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                insertText: 'def ${1:func_name}(${2:args}):\n\t${3:pass}',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                range: range,
+                detail: 'Function definition'
+            });
+
+            suggestions.push({
+                label: 'if',
+                kind: monaco.languages.CompletionItemKind.Snippet,
+                insertText: 'if ${1:condition}:\n\t${2:pass}',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                range: range
+            });
+
+            suggestions.push({
+                label: 'print',
+                kind: monaco.languages.CompletionItemKind.Function,
+                insertText: 'print(${1:text})',
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                range: range,
+                detail: 'Print to console'
+            });
+
+            // 現在のファイル内の変数などを簡易的に取得して候補に追加
+            const text = model.getValue();
+            const variableRegex = /[a-zA-Z_][a-zA-Z0-9_]*/g;
+            const found = text.match(variableRegex) || [];
+            const unique = [...new Set(found)];
+            
+            unique.forEach(v => {
+                if(!keywords.includes(v)) {
+                    suggestions.push({
+                        label: v,
+                        kind: monaco.languages.CompletionItemKind.Variable,
+                        insertText: v,
+                        range: range
+                    });
+                }
+            });
+
+            return { suggestions: suggestions };
+        }
+    });
+}
 
 // --- File System UI (Recursive Tree) ---
 function renderTree() {
     const tree = document.getElementById('file-tree');
     tree.innerHTML = "";
-    
-    // Build Hierarchy
     const structure = {};
     Object.keys(files).sort().forEach(path => {
         const parts = path.split('/');
@@ -86,7 +173,6 @@ function renderTree() {
     });
 
     function buildDom(obj, container, prefix = "", level = 0) {
-        // Sort: Folders first
         Object.keys(obj).sort((a,b) => {
             const aIsFile = obj[a].__file;
             const bIsFile = obj[b].__file;
@@ -98,22 +184,18 @@ function renderTree() {
             const isFile = item.__file;
             const fullPath = prefix ? `${prefix}/${key}` : key;
             const padding = level * 12 + 10;
-
             const node = document.createElement('div');
             node.className = 'tree-node';
-            
             const content = document.createElement('div');
             content.className = `tree-content ${isFile && fullPath === currentPath ? 'active' : ''}`;
             content.style.paddingLeft = padding + 'px';
             content.draggable = true;
 
-            // Icon
             let iconStr = isFile ? getIcon(key) : (expandedFolders.has(fullPath) ? '📂' : '📁');
             let arrowStr = isFile ? '<span style="width:20px;"></span>' : `<span class="tree-arrow ${expandedFolders.has(fullPath)?'open':''}">▶</span>`;
 
             content.innerHTML = `${arrowStr}<span class="tree-icon">${iconStr}</span><span class="tree-name">${key}</span><span class="tree-menu">⋮</span>`;
             
-            // Events
             content.onclick = (e) => {
                 e.stopPropagation();
                 if(isFile) openFile(item.path); else toggleFolder(fullPath);
@@ -123,7 +205,6 @@ function renderTree() {
                 e.stopPropagation(); showCtx(e, fullPath, isFile);
             }
 
-            // D&D
             content.ondragstart = (e) => { dragSrc = fullPath; e.dataTransfer.effectAllowed = 'move'; };
             content.ondragover = (e) => { e.preventDefault(); if(!isFile) content.classList.add('drag-over'); };
             content.ondragleave = (e) => content.classList.remove('drag-over');
@@ -132,7 +213,6 @@ function renderTree() {
                 if(!dragSrc || dragSrc === fullPath) return;
                 moveEntry(dragSrc, fullPath + "/" + dragSrc.split('/').pop());
             };
-
             node.appendChild(content);
 
             if(!isFile && expandedFolders.has(fullPath)) {
@@ -155,7 +235,6 @@ function openFile(p) {
     if(!files[p]) return;
     currentPath = p;
     if(!openedFiles.includes(p)) openedFiles.push(p);
-    
     monaco.editor.setModelLanguage(editor.getModel(), getLang(p));
     editor.setValue(files[p].content);
     renderTree();
@@ -184,7 +263,7 @@ function renderTabs() {
     });
 }
 
-// --- Menu Actions (Fixed Rename/Move) ---
+// --- Menu Actions ---
 const ctxMenu = document.getElementById('context-menu');
 let ctxTarget = null, ctxIsFile = true;
 
@@ -204,55 +283,41 @@ function ctxRename() {
     const oldName = ctxTarget.split('/').pop();
     const newName = prompt("Rename to:", oldName);
     if(!newName || newName === oldName) return;
-    
-    // Calculate new path properly
     const parent = ctxTarget.substring(0, ctxTarget.lastIndexOf('/'));
     const newPath = parent ? `${parent}/${newName}` : newName;
-    
     moveEntry(ctxTarget, newPath);
 }
 
 function ctxMove() {
     const dest = prompt("Move to folder (leave empty for root):", "");
     if(dest === null) return;
-    
-    const d = dest.trim().replace(/\/$/, ""); // Remove trailing slash
+    const d = dest.trim().replace(/\/$/, ""); 
     const fileName = ctxTarget.split('/').pop();
     const newPath = d ? `${d}/${fileName}` : fileName;
-    
     if(newPath === ctxTarget) return;
     moveEntry(ctxTarget, newPath);
 }
 
 function moveEntry(oldP, newP) {
     if(files[oldP]) {
-        // Simple File Move
         if(files[newP]) { alert("File exists!"); return; }
         files[newP] = files[oldP];
         delete files[oldP];
-        
-        // Update Tabs
         const idx = openedFiles.indexOf(oldP);
         if(idx !== -1) openedFiles[idx] = newP;
         if(currentPath === oldP) currentPath = newP;
-        
     } else {
-        // Folder Move/Rename: Rename all files starting with oldP/
         const keys = Object.keys(files).filter(k => k.startsWith(oldP + '/'));
-        if(keys.length === 0) return; // Empty folder (virtual)
-        
+        if(keys.length === 0) return;
         keys.forEach(k => {
             const suffix = k.substring(oldP.length);
             const dest = newP + suffix;
             files[dest] = files[k];
             delete files[k];
-            
             const idx = openedFiles.indexOf(k);
             if(idx !== -1) openedFiles[idx] = dest;
             if(currentPath === k) currentPath = dest;
         });
-        
-        // Update expanded folders logic
         if(expandedFolders.has(oldP)) {
             expandedFolders.delete(oldP);
             expandedFolders.add(newP);
@@ -269,7 +334,6 @@ function ctxDelete() {
         delete files[ctxTarget];
         closeFile(ctxTarget);
     } else {
-        // Folder delete
         Object.keys(files).forEach(k => {
             if(k.startsWith(ctxTarget + '/')) {
                 delete files[k];
@@ -288,9 +352,7 @@ function ctxRun() {
 function createNewFile() {
     let name = prompt("File Name (e.g. script.py):", "");
     if(!name) return;
-    // Default extension if missing
     if(!name.includes('.')) name += ".txt";
-    
     if(files[name]) { alert("Exists"); return; }
     files[name] = { content: "", mode: getLang(name) };
     saveFiles(); renderTree(); openFile(name);
@@ -299,7 +361,6 @@ function createNewFile() {
 function createNewFolder() {
     const name = prompt("Folder Name:", "new_folder");
     if(!name) return;
-    // Create a dummy file to hold the folder
     files[`${name}/.keep`] = { content: "", mode: "plaintext" };
     expandedFolders.add(name);
     saveFiles(); renderTree();
@@ -323,7 +384,6 @@ async function runProject() {
         runPython();
     } else if(currentPath.match(/\.(html|js|css)$/)) {
         switchPanel('preview');
-        // If index.html exists, use it. Else use current if html
         let entry = files['index.html'] ? 'index.html' : (currentPath.endsWith('.html') ? currentPath : null);
         if(entry) {
             document.getElementById('preview-frame').srcdoc = bundleFiles(entry);
@@ -340,22 +400,75 @@ function bundleFiles(path) {
     return html;
 }
 
-// --- Python Worker ---
+// --- Python Worker & Input Handler ---
 let pyWorker = null;
+
 function initPyWorker() {
+    // SharedArrayBufferのサポート確認
+    if (typeof SharedArrayBuffer === 'undefined') {
+        termLog("⚠ Warning: SharedArrayBuffer is not supported. input() will fail.", "orange");
+        termLog("  (This requires Cross-Origin-Opener-Policy headers on the server)", "#888");
+    } else {
+        // バッファの確保 (Buffer + Status)
+        // 最初の4バイト: ステータス (0: wait, 1: ready)
+        // 以降: データ
+        sharedBuffer = new SharedArrayBuffer(1024 * 4); 
+        sharedStatus = new Int32Array(sharedBuffer, 0, 1);
+    }
+
     document.getElementById('py-status-text').innerText = "Loading";
     pyWorker = new Worker('py-worker.js');
+    
+    pyWorker.postMessage({ cmd: 'init', buffer: sharedBuffer });
+
     pyWorker.onmessage = (e) => {
         const d = e.data;
         if(d.type === 'ready') document.getElementById('py-status-text').innerText = "Ready";
         else if(d.type === 'stdout') termLog(d.text);
         else if(d.type === 'error') termLog(d.error, 'red');
-        else if(d.type === 'results') termLog("Done.");
+        else if(d.type === 'results') termLog("Done.", "#444");
+        else if(d.type === 'input_request') handleInputRequest(d);
     };
 }
-initPyWorker();
+
+function handleInputRequest(data) {
+    // ユーザーに入力を求める (Main Thread)
+    // promptはブロッキングUIですが、ここでの停止はWorkerには影響しません。
+    // WorkerはAtomics.waitで既に止まっています。
+    const result = prompt(data.prompt || "") || "";
+
+    if (!sharedBuffer) {
+        alert("input() failed: SharedArrayBuffer not available.");
+        return;
+    }
+
+    const encoder = new TextEncoder();
+    const encoded = encoder.encode(result);
+    
+    // データエリア（4バイト以降）に書き込み
+    const dataView = new Uint8Array(sharedBuffer, 4);
+    // 既存データをクリア（簡易的）
+    for(let i=0; i<dataView.length; i++) dataView[i] = 0;
+    
+    dataView.set(encoded);
+
+    // ステータスを1にしてWorkerを起こす
+    Atomics.store(sharedStatus, 0, 1);
+    Atomics.notify(sharedStatus, 0);
+
+    // ターミナルに入力をエコーバック
+    termLog(result, "#aaa");
+}
+
+function stopCode() {
+    // Workerを強制終了して再起動
+    if(pyWorker) pyWorker.terminate();
+    termLog("⚠ Execution stopped.", "red");
+    initPyWorker();
+}
 
 function runPython() {
+    if(!pyWorker) initPyWorker();
     const d = {};
     for(let f in files) d[f] = files[f].content;
     pyWorker.postMessage({ cmd: 'run', code: files[currentPath].content, files: d });
@@ -369,7 +482,6 @@ shellInput.addEventListener('keydown', e => {
         const val = shellInput.value;
         termLog(`$ ${val}`, '#888');
         shellInput.value = "";
-        // Simple commands
         if(val === 'ls') termLog(Object.keys(files).join('\n'));
         else if(val === 'clear') termOut.innerHTML = "";
     }
@@ -401,9 +513,6 @@ function toggleTerminal() {
     p.style.display = p.style.display === 'none' ? 'flex' : 'none';
     editor.layout();
 }
-function resetAll() {
-    if(confirm("Reset Everything?")) { localStorage.removeItem('pypanel_files'); location.reload(); }
-}
 function openPopup() {
     document.getElementById('popup-overlay').style.display = 'flex';
     if(files['index.html']) document.getElementById('popup-content').srcdoc = bundleFiles('index.html');
@@ -424,7 +533,7 @@ function initResize(e) {
 }
 function doResize(e) {
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const h = window.innerHeight - clientY - 24; // Status bar
+    const h = window.innerHeight - clientY - 24; 
     if(h > 30 && h < window.innerHeight - 100) {
         bPanel.style.height = h + 'px';
         editor.layout();
