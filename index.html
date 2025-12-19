@@ -3,169 +3,140 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PyPanel Ultra Tabs</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <title>PyPanel VS Ultimate</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-dark: #1e1e1e;
+            --bg-base: #1e1e1e;
+            --bg-activity: #333333;
             --bg-sidebar: #252526;
-            --bg-panel: #1e1e1e;
+            --bg-title: #3c3c3c;
+            --bg-status: #007acc;
+            --fg-text: #cccccc;
+            --border: #454545;
             --accent: #007acc;
-            --text-main: #cccccc;
-            --border: #333333;
-            --tab-bg: #2d2d2d;
-            --tab-active: #1e1e1e;
+            --hover: #2a2d2e;
+            --selection: #37373d;
         }
         * { box-sizing: border-box; }
-        body { margin: 0; height: 100vh; background: var(--bg-dark); color: var(--text-main); font-family: 'Inter', sans-serif; overflow: hidden; display: flex; flex-direction: column; }
+        body { margin: 0; height: 100vh; background: var(--bg-base); color: var(--fg-text); font-family: 'Inter', sans-serif; overflow: hidden; display: flex; flex-direction: column; user-select: none; }
 
-        /* Main Wrapper */
-        #app-wrapper {
-            flex: 1; display: flex; flex-direction: column; overflow: hidden;
-            width: 100%; height: 100%;
-            transform-origin: top left; transition: transform 0.1s;
-        }
+        /* Main Layout */
+        #app-wrapper { display: flex; flex: 1; overflow: hidden; width: 100%; height: 100%; transform-origin: top left; }
 
-        /* Toolbar */
-        #toolbar { 
-            height: 45px; background: #333; display: flex; align-items: center; padding: 0 10px; border-bottom: 1px solid #111; 
-            justify-content: space-between; flex-shrink: 0; z-index: 100;
+        /* 1. Activity Bar (Leftmost) */
+        #activity-bar {
+            width: 48px; background: var(--bg-activity); display: flex; flex-direction: column; align-items: center; padding-top: 10px; flex-shrink: 0;
         }
-        h1 { margin: 0; font-size: 14px; color: #fff; font-weight: 600; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-        .tool-group { display: flex; gap: 8px; align-items: center; }
+        .activity-icon { font-size: 24px; color: #858585; margin-bottom: 20px; cursor: pointer; padding: 10px; border-left: 2px solid transparent; }
+        .activity-icon.active { color: #fff; border-left-color: #fff; }
+        .activity-icon:hover { color: #fff; }
+
+        /* 2. Sidebar (Explorer) */
+        #sidebar {
+            width: 250px; background: var(--bg-sidebar); border-right: 1px solid var(--bg-base); display: flex; flex-direction: column;
+            transition: width 0.1s; overflow: hidden; flex-shrink: 0;
+        }
+        #sidebar.collapsed { width: 0 !important; border: none; }
         
-        button { 
-            cursor: pointer; border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; color: white; transition: 0.2s; display: flex; align-items: center; gap: 5px;
-        }
-        button:disabled { opacity: 0.5; cursor: wait; }
-        #runBtn { background: #2ea043; } 
-        #stopBtn { background: #da3633; display: none; }
-        .icon-btn { background: transparent; color: #aaa; padding: 6px; font-size: 18px; cursor: pointer; }
-        .icon-btn:hover { color: #fff; background: #444; border-radius: 4px; }
+        .sidebar-title { padding: 10px 20px; font-size: 11px; font-weight: bold; color: #bbb; text-transform: uppercase; display: flex; justify-content: space-between; }
+        .sidebar-actions span { cursor: pointer; margin-left: 8px; font-size: 14px; }
+        .sidebar-actions span:hover { color: #fff; }
+        #file-tree { flex: 1; overflow-y: auto; overflow-x: hidden; }
 
-        /* Workspace */
-        #workspace { flex: 1; display: flex; overflow: hidden; position: relative; }
-        
-        /* Sidebar */
-        #sidebar { 
-            width: 240px; background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column;
-            flex-shrink: 0; transition: width 0.2s ease; overflow: hidden; white-space: nowrap;
-        }
-        #sidebar.collapsed { width: 0 !important; border-right: none; }
-
-        .sidebar-header { padding: 10px; font-size: 11px; font-weight: bold; color: #888; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; min-height: 35px; }
-        #file-tree { flex: 1; overflow-y: auto; padding: 5px 0; }
-        
         /* Tree Items */
-        .tree-node { color: #ccc; font-size: 13px; display: flex; flex-direction: column; }
-        .tree-content { display: flex; align-items: center; padding: 4px 10px; cursor: pointer; border: 1px solid transparent; }
-        .tree-content:hover { background: #2a2d2e; }
-        .tree-content.active { background: #37373d; color: white; border-left: 2px solid var(--accent); }
-        .tree-content.drag-over { background: #444; border: 1px dashed #007acc; }
-        .tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 5px; }
-        .tree-menu-btn { padding: 0 8px; color: #888; font-weight: bold; cursor: pointer; visibility: hidden; }
-        .tree-content:hover .tree-menu-btn { visibility: visible; }
-        .tree-children { padding-left: 12px; display: none; border-left: 1px solid #444; margin-left: 10px; }
-        .tree-children.open { display: block; }
-        .arrow { font-size: 10px; color: #999; display: inline-block; width: 10px; transition: transform 0.1s; }
-        .arrow.down { transform: rotate(90deg); }
-
-        /* Center Area */
-        #center-area { flex: 1; display: flex; min-width: 0; height: 100%; position: relative; }
+        .tree-node { display: flex; flex-direction: column; font-size: 13px; color: #ccc; cursor: pointer; }
+        .tree-content { display: flex; align-items: center; padding: 3px 0; border: 1px solid transparent; }
+        .tree-content:hover { background: var(--hover); }
+        .tree-content.active { background: var(--selection); color: #fff; }
+        .tree-content.drag-over { background: #094771; border: 1px dashed var(--accent); }
         
-        #editor-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100%; }
-        
-        /* Multi Tabs Style */
-        #tabs { 
-            height: 35px; background: var(--tab-bg); display: flex; align-items: center; 
-            overflow-x: auto; flex-shrink: 0; border-bottom: 1px solid #111;
-        }
-        /* Scrollbar hide */
-        #tabs::-webkit-scrollbar { height: 4px; }
-        #tabs::-webkit-scrollbar-thumb { background: #444; }
+        .tree-arrow { width: 20px; text-align: center; font-size: 10px; color: #ccc; transform: rotate(0deg); transition: 0.1s; }
+        .tree-arrow.open { transform: rotate(90deg); }
+        .tree-icon { margin-right: 6px; font-size: 16px; }
+        .tree-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+        .tree-menu { opacity: 0; padding: 0 8px; font-weight: bold; }
+        .tree-content:hover .tree-menu { opacity: 1; }
 
-        .tab { 
-            padding: 0 10px 0 15px; height: 100%; display: flex; align-items: center; font-size: 13px; 
-            color: #888; background: var(--tab-bg); cursor: pointer; border-right: 1px solid #1e1e1e; 
-            min-width: 100px; max-width: 200px; justify-content: space-between; white-space: nowrap;
-            user-select: none;
+        /* 3. Main Editor Area */
+        #main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg-base); }
+
+        /* Title/Tabs Bar */
+        #editor-title-bar {
+            height: 35px; background: var(--bg-sidebar); display: flex; overflow-x: auto; align-items: center; border-bottom: 1px solid var(--bg-base);
         }
-        .tab:hover { background: #333; }
-        .tab.active { background: var(--tab-active); color: #fff; border-top: 2px solid var(--accent); }
-        .tab-name { overflow: hidden; text-overflow: ellipsis; }
-        .tab-close { 
-            margin-left: 8px; padding: 2px 5px; border-radius: 3px; font-size: 14px; color: #666;
+        #editor-title-bar::-webkit-scrollbar { height: 2px; }
+        .tab {
+            height: 100%; display: flex; align-items: center; padding: 0 10px; font-size: 13px; color: #969696; background: #2d2d2d; 
+            border-right: 1px solid #252526; cursor: pointer; min-width: 120px; max-width: 200px;
         }
+        .tab.active { background: var(--bg-base); color: #fff; border-top: 2px solid var(--accent); }
+        .tab-close { margin-left: auto; font-size: 14px; border-radius: 3px; padding: 0 4px; visibility: hidden; }
+        .tab:hover .tab-close { visibility: visible; }
         .tab-close:hover { background: #444; color: #fff; }
 
-        #editor-container { flex: 1; overflow: hidden; position: relative; }
-
-        /* Right Preview */
-        #right-preview-pane { width: 40%; background: #fff; display: none; flex-direction: column; border-left: 1px solid #333; }
-        #right-preview-pane.show { display: flex; }
-
-        /* Bottom Panel */
-        #bottom-panel { 
-            height: 200px; background: var(--bg-panel); display: flex; flex-direction: column; 
-            min-height: 30px; flex-shrink: 0; border-top: 1px solid #333;
+        /* Editor Toolbar (Run buttons) */
+        #editor-actions {
+            height: 30px; display: flex; align-items: center; justify-content: flex-end; padding-right: 10px; background: var(--bg-base);
         }
-        #panel-tabs { height: 30px; background: #222; display: flex; border-bottom: 1px solid #333; flex-shrink: 0; }
-        .panel-tab { padding: 0 15px; font-size: 12px; color: #888; display: flex; align-items: center; cursor: pointer; border-right: 1px solid #333; }
-        .panel-tab.active { background: #1e1e1e; color: white; font-weight: bold; border-top: 2px solid var(--accent); }
+        .action-btn { background: none; border: none; color: #ccc; cursor: pointer; padding: 4px; font-size: 16px; margin-left: 5px; border-radius: 3px; }
+        .action-btn:hover { background: #333; color: #fff; }
+        .action-btn.run { color: #85d185; }
+
+        /* Editor & Split View */
+        #center-split { flex: 1; display: flex; overflow: hidden; position: relative; }
+        #editor-container { flex: 1; position: relative; }
         
-        #terminal-area, #bottom-preview-area { 
-            flex: 1; display: none; overflow: hidden; flex-direction: column; height: 100%; background: #1e1e1e;
-        }
-        #terminal-area.show, #bottom-preview-area.show { display: flex; }
+        #right-preview-pane { width: 50%; border-left: 1px solid var(--border); display: none; background: #fff; flex-direction: column; }
+        #right-preview-pane.show { display: flex; }
+        .preview-header { background: #f0f0f0; color: #333; padding: 5px 10px; font-size: 12px; font-weight: bold; border-bottom: 1px solid #ccc; }
 
-        /* Output & Shell Fixed */
-        #output { 
-            flex: 1; padding: 10px; overflow-y: auto; overflow-x: hidden;
-            font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5; color: #d4d4d4; 
-            user-select: text; white-space: pre-wrap; word-break: break-all;
-        }
-        /* Shell Input Area */
-        .shell-line { 
-            display: flex; align-items: center;
-            background: #1e1e1e; padding: 0 10px 5px 10px; flex-shrink: 0;
-        }
-        .shell-prompt { color: #2ea043; margin-right: 8px; font-weight: bold; white-space: nowrap; }
-        #shell-input { 
-            flex: 1; background: transparent; border: none; color: #fff; 
-            font-family: 'JetBrains Mono', monospace; font-size: 13px; outline: none; 
-        }
+        /* Bottom Panel (Terminal) */
+        #bottom-panel { height: 200px; border-top: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg-base); }
+        .panel-tabs { display: flex; height: 30px; border-bottom: 1px solid var(--border); }
+        .panel-tab { padding: 0 15px; font-size: 11px; text-transform: uppercase; color: #888; display: flex; align-items: center; cursor: pointer; }
+        .panel-tab.active { color: #fff; border-bottom: 1px solid var(--accent); }
+        .panel-content { flex: 1; display: none; overflow: hidden; position: relative; }
+        .panel-content.show { display: flex; flex-direction: column; }
 
-        iframe { width: 100%; height: 100%; border: none; background: white; flex: 1; display: block; }
+        #output { flex: 1; padding: 10px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #d4d4d4; overflow: auto; user-select: text; white-space: pre-wrap; }
+        .shell-line { display: flex; padding: 0 10px 5px 10px; }
+        .shell-prompt { color: #2ea043; margin-right: 8px; }
+        #shell-input { flex: 1; background: transparent; border: none; color: #fff; outline: none; font-family: inherit; font-size: inherit; }
 
         /* Status Bar */
         #status-bar {
-            height: 24px; background: #007acc; color: white;
-            display: flex; align-items: center; padding: 0 10px; font-size: 11px;
-            flex-shrink: 0; gap: 15px; font-family: 'Inter', sans-serif;
-            z-index: 200;
+            height: 22px; background: var(--bg-status); color: #fff; display: flex; align-items: center; padding: 0 10px; font-size: 11px; z-index: 999;
         }
-        .status-item { display: flex; align-items: center; gap: 5px; }
-        .status-icon { font-size: 12px; }
+        .sb-item { margin-right: 15px; display: flex; align-items: center; gap: 5px; cursor: pointer; }
+        .sb-right { margin-left: auto; display: flex; gap: 15px; }
 
         /* Resizers */
-        .resizer-h { height: 12px; background: #2d2d2d; cursor: row-resize; z-index: 20; display: flex; justify-content: center; align-items: center; flex-shrink: 0; border-top: 1px solid #444; border-bottom: 1px solid #444; }
-        .resizer-h::after { content: "•••"; color: #666; font-size: 10px; letter-spacing: 2px; }
-        .resizer-v { width: 8px; background: #2d2d2d; cursor: col-resize; z-index: 20; display: flex; align-items: center; justify-content: center; }
+        .resizer-h { height: 4px; cursor: ns-resize; z-index: 10; background: transparent; margin-top: -2px; }
+        .resizer-h:hover { background: var(--accent); }
+        .resizer-v { width: 4px; cursor: ew-resize; z-index: 10; background: transparent; margin-left: -2px; }
+        .resizer-v:hover { background: var(--accent); }
 
-        #loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1e1e1e; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-        .spinner { width: 40px; height: 40px; border: 3px solid #333; border-top: 3px solid #007acc; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* Loading & Popups */
+        #loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-base); z-index: 10000; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .spinner { width: 40px; height: 40px; border: 3px solid #333; border-top: 3px solid var(--accent); border-radius: 50%; animation: spin 1s infinite linear; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
 
-        #context-menu { position: absolute; background: #252526; border: 1px solid #444; display: none; z-index: 4000; min-width: 160px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border-radius: 4px; overflow: hidden; }
-        .ctx-item { padding: 12px 15px; font-size: 14px; cursor: pointer; color: #eee; border-bottom: 1px solid #333; }
-        .ctx-item:active, .ctx-item:hover { background: #007acc; }
+        #context-menu { position: absolute; background: #252526; border: 1px solid #454545; display: none; z-index: 5000; width: 200px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .ctx-item { padding: 8px 12px; font-size: 13px; color: #ccc; cursor: pointer; display: flex; justify-content: space-between; }
+        .ctx-item:hover { background: #04395e; color: #fff; }
+        .ctx-key { color: #888; font-size: 11px; }
+        .ctx-sep { height: 1px; background: #454545; margin: 4px 0; }
 
+        #toast { position: fixed; top: 40px; left: 50%; transform: translateX(-50%); background: #252526; color: #fff; padding: 8px 16px; border-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: 1px solid #454545; opacity: 0; pointer-events: none; transition: 0.3s; z-index: 6000; }
+        #toast.show { opacity: 1; top: 60px; }
+
+        /* Mobile */
         @media (max-width: 768px) {
-            #sidebar { position: absolute; height: 100%; z-index: 50; transform: translateX(-100%); width: 280px; box-shadow: 2px 0 10px rgba(0,0,0,0.5); }
+            #activity-bar { width: 0; overflow: hidden; }
+            #sidebar { position: absolute; height: 100%; z-index: 100; transform: translateX(-100%); box-shadow: 2px 0 10px #000; }
             #sidebar.open { transform: translateX(0); }
-            #sidebar.collapsed { width: 280px !important; transform: translateX(-100%); opacity: 1; }
             #right-preview-pane { display: none !important; }
-            h1 span { display: none; }
         }
     </style>
 </head>
@@ -173,90 +144,123 @@
 
 <div id="loading-screen">
     <div class="spinner"></div>
-    <div id="loading-text" style="color:#aaa; margin-top:10px;">System Booting...</div>
+    <div style="color:#888; margin-top:15px; font-size:12px;">VS Code Environment Loading...</div>
 </div>
+
+<div id="toast">Message</div>
 
 <div id="app-wrapper">
-    <div id="toolbar">
-        <div class="tool-group">
-            <button class="icon-btn" onclick="toggleSidebar()">📂</button>
-            <h1>🐍 <span>PyPanel</span></h1>
-        </div>
-        <div class="tool-group">
-            <button class="icon-btn" onclick="changeZoom(-0.1)" style="font-size:12px;">-</button>
-            <button class="icon-btn" onclick="changeZoom(0.1)" style="font-size:12px;">+</button>
-            <button class="icon-btn" onclick="toggleLayout()" title="Layout">◫</button>
-            <button id="runBtn" onclick="runProject()">▶ Run</button>
-            <button id="stopBtn" onclick="stopCode()">⏹ Stop</button>
-        </div>
+    <!-- 1. Activity Bar -->
+    <div id="activity-bar">
+        <div class="activity-icon active" title="Explorer" onclick="toggleSidebar()">📂</div>
+        <div class="activity-icon" title="Search">🔍</div>
+        <div class="activity-icon" title="Source Control">🌿</div>
+        <div class="activity-icon" title="Extensions">🧩</div>
     </div>
 
-    <div id="workspace">
-        <div id="sidebar">
-            <div class="sidebar-header">
-                <span>EXPLORER</span>
-                <div style="display:flex; gap:10px;">
-                    <span style="cursor:pointer; color:#fff;" onclick="createNewFolder()">📁</span>
-                    <span style="cursor:pointer; color:#fff;" onclick="createNewFile()">+</span>
+    <!-- 2. Workspace -->
+    <div style="display:flex; flex-direction:column; flex:1; overflow:hidden;">
+        <div style="display:flex; flex:1; overflow:hidden;">
+            <!-- Sidebar -->
+            <div id="sidebar">
+                <div class="sidebar-title">
+                    <span>Explorer</span>
+                    <div class="sidebar-actions">
+                        <span onclick="createNewFile()" title="New File">📄</span>
+                        <span onclick="createNewFolder()" title="New Folder">📁</span>
+                        <span onclick="resetAll()" title="Reset">⚡</span>
+                    </div>
                 </div>
+                <div id="file-tree"></div>
             </div>
-            <div id="file-tree"></div>
-        </div>
 
-        <div id="center-area">
-            <div id="editor-pane">
-                <!-- Multi Tabs Container -->
-                <div id="tabs"></div>
-                <div id="editor-container"></div>
+            <!-- Main Editor -->
+            <div id="main-area">
+                <div id="editor-title-bar">
+                    <div id="tabs" style="display:flex; height:100%;"></div>
+                </div>
                 
+                <div id="editor-actions">
+                    <button class="action-btn run" onclick="runProject()" title="Run Code (Ctrl+Enter)">▶</button>
+                    <button class="action-btn" onclick="toggleLayout()" title="Split Editor">◫</button>
+                    <button class="action-btn" onclick="openPopup()" title="Open Preview Window">❐</button>
+                </div>
+
+                <div id="center-split">
+                    <div id="editor-container"></div>
+                    
+                    <div class="resizer-v" id="resizer-v" style="display:none;"></div>
+                    
+                    <div id="right-preview-pane">
+                        <div class="preview-header">Web Preview</div>
+                        <iframe id="right-preview-frame"></iframe>
+                    </div>
+                </div>
+
                 <div class="resizer-h" id="resizer-h"></div>
-                
+
+                <!-- Bottom Panel -->
                 <div id="bottom-panel">
-                    <div id="panel-tabs">
+                    <div class="panel-tabs">
                         <div class="panel-tab active" id="tab-term" onclick="switchPanel('terminal')">TERMINAL</div>
-                        <div class="panel-tab" id="tab-prev" onclick="switchPanel('preview')">PREVIEW (Bottom)</div>
-                        <div class="panel-tab" onclick="clearOutput()" style="margin-left:auto;">CLEAR</div>
+                        <div class="panel-tab" id="tab-web" onclick="switchPanel('preview')">WEB PREVIEW</div>
+                        <div class="panel-tab" style="margin-left:auto; cursor:pointer;" onclick="clearOutput()">🗑️</div>
                     </div>
                     
-                    <div id="terminal-area" class="show">
-                        <div id="output" onclick="document.getElementById('shell-input').focus()">
+                    <div id="terminal-area" class="panel-content show">
+                        <div id="output">
+                            <div style="color:#666;">PyPanel Shell [Version 2.5]</div>
+                            <div style="color:#666; margin-bottom:10px;">Copyright (c) 2025 PyPanel Corp. All rights reserved.</div>
                             <div id="term-log"></div>
                         </div>
-                        <!-- Fixed Input Line -->
                         <div class="shell-line">
                             <span class="shell-prompt">user@pypanel:~$</span>
-                            <input type="text" id="shell-input" autocomplete="off">
+                            <input type="text" id="shell-input" autocomplete="off" spellcheck="false">
                         </div>
                     </div>
 
-                    <div id="bottom-preview-area">
-                        <iframe id="bottom-preview-frame"></iframe>
+                    <div id="preview-area" class="panel-content">
+                        <iframe id="bottom-preview-frame" style="border:none; width:100%; height:100%; background:#fff;"></iframe>
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div id="status-bar">
+            <div class="sb-item"><span style="font-size:12px">⚡</span> <span id="cpu-val">0%</span></div>
+            <div class="sb-item"><span style="font-size:12px">💾</span> <span id="mem-val">--</span></div>
+            <div class="sb-item" onclick="toggleSidebar()">master*</div>
             
-            <div class="resizer-v" id="resizer-v" style="display:none;"></div>
-            <div id="right-preview-pane">
-                <div style="background:#222; color:#aaa; font-size:11px; padding:5px; flex-shrink:0;">PREVIEW (Right)</div>
-                <iframe id="right-preview-frame"></iframe>
+            <div class="sb-right">
+                <div class="sb-item" id="zoom-ctrl" title="Zoom">
+                    <span onclick="changeZoom(-0.1)">-</span> <span id="zoom-val">100%</span> <span onclick="changeZoom(0.1)">+</span>
+                </div>
+                <div class="sb-item">Ln <span id="cursor-ln">1</span>, Col <span id="cursor-col">1</span></div>
+                <div class="sb-item">UTF-8</div>
+                <div class="sb-item" id="lang-mode">Python</div>
+                <div class="sb-item">🔔</div>
             </div>
         </div>
     </div>
-</div>
-
-<!-- Status Bar -->
-<div id="status-bar">
-    <div class="status-item"><span class="status-icon">⚡</span> CPU: <span id="cpu-val">0%</span></div>
-    <div class="status-item"><span class="status-icon">💾</span> Mem: <span id="mem-val">--</span></div>
-    <div class="status-item"><span class="status-icon">🐍</span> Py: <span id="py-status-text">Init</span></div>
-    <div class="status-item" style="margin-left:auto;"><span class="status-icon">📄</span> <span id="file-count">0</span> Files</div>
 </div>
 
 <div id="context-menu">
-    <div class="ctx-item" onclick="ctxRun()">▶ 実行</div>
-    <div class="ctx-item" onclick="ctxRename()">✏️ 名前変更</div>
-    <div class="ctx-item" onclick="ctxMove()">📂 移動...</div>
-    <div class="ctx-item" onclick="ctxDelete()" style="color:#ff6666;">🗑️ 削除</div>
+    <div class="ctx-item" onclick="ctxRun()"><span>Run File</span><span class="ctx-key">Ctrl+Enter</span></div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" onclick="ctxRename()"><span>Rename</span><span class="ctx-key">F2</span></div>
+    <div class="ctx-item" onclick="ctxMove()"><span>Move to...</span></div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" onclick="ctxDelete()" style="color:#ce9178;"><span>Delete</span><span class="ctx-key">Del</span></div>
+</div>
+
+<div id="popup-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9000; justify-content:center; align-items:center;">
+    <div style="width:90%; height:90%; background:#fff; display:flex; flex-direction:column; box-shadow:0 0 20px rgba(0,0,0,0.5);">
+        <div style="background:#333; color:#fff; padding:5px 10px; display:flex; justify-content:space-between;">
+            <span>Preview Window</span><span style="cursor:pointer;" onclick="document.getElementById('popup-overlay').style.display='none'">×</span>
+        </div>
+        <iframe id="popup-content" style="flex:1; border:none;"></iframe>
+    </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js"></script>
